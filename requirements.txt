@@ -1,0 +1,9 @@
+requests
+pandas
+numpy
+scikit-learn
+sentence-transformers
+umap-learn
+hdbscan
+plotly
+tqdm

@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+*.egg
+
+# Generated data (large, re-created by pipeline)
+data/
+outputs/
+
+# Claude internal
+.claude/
