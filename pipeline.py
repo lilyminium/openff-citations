@@ -930,9 +930,12 @@ def create_viz(
 
     # ── Build figure ──────────────────────────────────────────────────────────
     fig = go.Figure()
-    trace_idx   = 0
-    hop_traces: dict[int, list[int]] = {h: [] for h in range(max_hop + 1)}
-    edge_trace_map: dict[str, int]   = {}   # "lo-hi" -> trace index
+    trace_idx        = 0
+    hop_traces: dict[int, list[int]]       = {h: [] for h in range(max_hop + 1)}
+    hop_point_traces: dict[int, list[int]] = {h: [] for h in range(max_hop + 1)}
+    hop_legend_indices: list[int]          = []
+    type_legend_indices: list[int]         = []
+    edge_trace_map: dict[str, int]         = {}   # "lo-hi" -> trace index
     n_edges_drawn = 0
 
     # Edge traces — one per hop-transition; hop-2 edges start hidden
@@ -999,6 +1002,7 @@ def create_viz(
                 ),
             ))
             hop_traces[hop].append(trace_idx)
+            hop_point_traces[hop].append(trace_idx)
             trace_idx += 1
 
     # Neighbourhood legend traces; hop-2 starts hidden to match point traces
@@ -1021,6 +1025,7 @@ def create_viz(
             ),
         ))
         hop_traces[hop].append(trace_idx)
+        hop_legend_indices.append(trace_idx)
         trace_idx += 1
 
     # Article type legend traces (dummy points, always visible)
@@ -1032,6 +1037,7 @@ def create_viz(
             legendgrouptitle_text="Article type",
             marker=dict(size=10, color="white", symbol=sym),
         ))
+        type_legend_indices.append(trace_idx)
         trace_idx += 1
 
     # ── Layout ────────────────────────────────────────────────────────────────
@@ -1204,11 +1210,15 @@ def create_viz(
         distorts long-range distances, so cluster boundaries are influenced by the projection.
         Clustering in high-dim space would be more rigorous but is ~10× slower at this scale.</p>
         <p style="margin:5px 0;"><b style="color:#e0e0e0;">Cluster labels — TF-IDF lift</b><br>
-        For each cluster, term lift = (weighted mean TF-IDF in cluster) / (mean TF-IDF in rest).
+        Text is first processed with <b>Gensim Phrases</b> (bigram then trigram pass) to join
+        statistically significant collocations into single tokens — e.g. "molecular dynamics",
+        "neural network potentials", "free energy perturbation" — so they are treated as atomic
+        units rather than split words.<br>
+        Term lift = (centroid-weighted mean TF-IDF in cluster) / (smoothed mean TF-IDF in rest).
         Documents are weighted by proximity to the cluster centroid so the most representative
         papers drive the label. Keywords are repeated ×{KEYWORD_REPEAT} to outweigh free text.
-        Author names and URL tokens are excluded. The top 3 unigrams are selected with
-        substring-based deduplication.</p>
+        Author names, URL tokens, and generic scientific hedging terms ("proposed", "results", etc.)
+        are excluded from the vocabulary. The top 3 terms by lift score are selected.</p>
         <p style="margin:5px 0;"><b style="color:#e0e0e0;">Data — OpenAlex</b><br>
         OpenAlex is a free, open scholarly graph of ~250 M works with a permissive API.
         Unlike Web of Science or Scopus it requires no subscription and supports programmatic
@@ -1234,12 +1244,23 @@ def create_viz(
 </div>"""
 
     # JavaScript
-    hop_traces_js = json.dumps(hop_traces)
-    edge_trace_js = json.dumps(edge_trace_map)
+    hop_traces_js       = json.dumps(hop_traces)
+    hop_point_traces_js = json.dumps(hop_point_traces)
+    hop_legend_js       = json.dumps(hop_legend_indices)
+    type_legend_js      = json.dumps(type_legend_indices)
+    edge_trace_js       = json.dumps(edge_trace_map)
+    # Per-hop dark-mode outline colors (mirrors HOP_STYLE border_color)
+    hop_dark_outlines   = {str(h): HOP_STYLE[min(h, max_style)][3]
+                           for h in range(max_hop + 1)}
+    hop_dark_outlines_js = json.dumps(hop_dark_outlines)
     js_code = f"""
 <script>
-var HOP_TRACES = {hop_traces_js};
-var EDGE_TRACES = {edge_trace_js};
+var HOP_TRACES        = {hop_traces_js};
+var HOP_POINT_TRACES  = {hop_point_traces_js};
+var HOP_LEGEND_TRACES = {hop_legend_js};
+var TYPE_LEGEND_TRACES= {type_legend_js};
+var EDGE_TRACES       = {edge_trace_js};
+var HOP_DARK_OUTLINES = {hop_dark_outlines_js};
 var _infoOpen = true;
 var _darkMode = true;
 var THEME = {{
@@ -1249,6 +1270,8 @@ var THEME = {{
     btnBg: 'rgba(255,255,255,0.1)', btnBorder: 'rgba(255,255,255,0.2)', btnColor: 'white',
     legendBg: 'rgba(0,0,0,0.45)', legendBorder: 'rgba(255,255,255,0.15)',
     btnLabel: '☀ Light mode',
+    legendMarkerColor: 'white',
+    edgeColor: 'rgba(200,200,200,0.15)',
   }},
   light: {{
     plotBg: '#f8f9fa', paperBg: '#f8f9fa', fontColor: '#111',
@@ -1256,6 +1279,10 @@ var THEME = {{
     btnBg: 'rgba(0,0,0,0.07)', btnBorder: 'rgba(0,0,0,0.18)', btnColor: '#111',
     legendBg: 'rgba(255,255,255,0.92)', legendBorder: 'rgba(0,0,0,0.18)',
     btnLabel: '🌙 Dark mode',
+    legendMarkerColor: '#333',
+    edgeColor: 'rgba(60,60,60,0.2)',
+    // per-hop light-mode marker outlines (darker for higher contrast on white)
+    hopOutline: {{'0':'rgba(20,20,20,0.9)', '1':'rgba(20,20,20,0.5)', '2':'rgba(20,20,20,0.35)', '3':'rgba(20,20,20,0.25)'}},
   }},
 }};
 
@@ -1273,6 +1300,34 @@ function toggleDarkMode() {{
       'legend.bordercolor':  t.legendBorder,
       'legend.font.color':   t.fontColor,
     }});
+
+    // Restyle marker outlines per hop (real point traces only)
+    Object.keys(HOP_POINT_TRACES).forEach(function(hop) {{
+      var indices = HOP_POINT_TRACES[hop];
+      if (!indices || !indices.length) return;
+      var outline = _darkMode
+        ? HOP_DARK_OUTLINES[hop]
+        : (t.hopOutline[hop] || t.hopOutline['1']);
+      Plotly.restyle(gd, {{'marker.line.color': outline}}, indices);
+    }});
+
+    // Restyle hop legend dummy markers
+    if (HOP_LEGEND_TRACES.length) {{
+      Plotly.restyle(gd,
+        {{'marker.color': t.legendMarkerColor, 'marker.line.color': t.legendMarkerColor}},
+        HOP_LEGEND_TRACES);
+    }}
+
+    // Restyle article-type legend dummy markers
+    if (TYPE_LEGEND_TRACES.length) {{
+      Plotly.restyle(gd, {{'marker.color': t.legendMarkerColor}}, TYPE_LEGEND_TRACES);
+    }}
+
+    // Restyle edge traces
+    var edgeIndices = Object.values(EDGE_TRACES);
+    if (edgeIndices.length) {{
+      Plotly.restyle(gd, {{'line.color': t.edgeColor}}, edgeIndices);
+    }}
   }}
   document.body.style.background = t.plotBg;
   [document.getElementById('hop-control-box'),
