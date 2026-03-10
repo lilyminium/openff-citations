@@ -1163,7 +1163,7 @@ def create_viz(
       <b>Method</b><br>
       &nbsp;&nbsp;Embeddings: all-MiniLM-L6-v2<br>
       &nbsp;&nbsp;Layout: UMAP (cosine, 2D)<br>
-      &nbsp;&nbsp;Clusters: HDBSCAN &rarr; {n_clusters} topics<br>
+            &nbsp;&nbsp;Clusters: HDBSCAN<br>
       &nbsp;&nbsp;Labels: TF-IDF lift scoring
       {type_note}
     </p>
@@ -1181,10 +1181,7 @@ def create_viz(
         style="cursor:pointer;color:#7ec8e3;font-size:11px;">&#x25B6; More details</span>
       <div id="details-content" style="display:none;margin-top:6px;font-size:11px;color:#ccc;line-height:1.5;">
         <p style="margin:5px 0;"><b style="color:#e0e0e0;">Embeddings — all-MiniLM-L6-v2</b><br>
-        A 22 M-parameter sentence transformer fine-tuned on over 1 billion sentence pairs for
-        semantic textual similarity. It produces 384-dimensional unit vectors, striking a good
-        balance between quality and speed for large corpora. Being open-source (Apache 2.0) and
-        runnable locally avoids API costs and keeps the pipeline fully reproducible.<br>
+                It's open-source (Apache 2.0) and runnable locally, avoiding API costs and keeping the pipeline fully reproducible.<br>
         <b>Input:</b> title + abstract + OpenAlex keywords/concepts (repeated ×{KEYWORD_REPEAT_EMBED}
         for emphasis) + author names.<br>
         <span style="color:#f0ad4e;">⚠ Caveat:</span> {pct_abstract}% of papers have abstracts
@@ -1201,43 +1198,29 @@ def create_viz(
         <span style="color:#f0ad4e;">⚠ Caveat:</span> HDBSCAN clusters are computed
         in 2D UMAP space (not the original 384-dim space), so cluster boundaries are
         influenced by the projection.  Hop-2 positions are approximate.</p>
-        <p style="margin:5px 0;"><b style="color:#e0e0e0;">Clustering — HDBSCAN</b><br>
-        HDBSCAN requires no pre-specified cluster count and naturally labels low-density points
-        as noise ("Uncategorised"), which avoids forcing unrelated papers into spurious clusters.
-        It handles the variable-density structure common in citation landscapes and is
-        deterministic via the excess-of-mass (EOM) leaf selection strategy.<br>
+                <p style="margin:5px 0;"><b style="color:#e0e0e0;">Clustering — HDBSCAN</b><br>
         <span style="color:#f0ad4e;">⚠ Caveat:</span> Clustering runs on the 2D UMAP projection
         (euclidean distance) rather than the original 384-dim embedding space (cosine). UMAP
         distorts long-range distances, so cluster boundaries are influenced by the projection.
         Clustering in high-dim space would be more rigorous but is ~10× slower at this scale.</p>
         <p style="margin:5px 0;"><b style="color:#e0e0e0;">Cluster labels — TF-IDF lift</b><br>
-        Text is first processed with <b>Gensim Phrases</b> (bigram then trigram pass) to join
-        statistically significant collocations into single tokens — e.g. "molecular dynamics",
-        "neural network potentials", "free energy perturbation" — so they are treated as atomic
-        units rather than split words.<br>
-        Term lift = (centroid-weighted mean TF-IDF in cluster) / (smoothed mean TF-IDF in rest).
+                For each cluster, term lift = (weighted mean <a href="https://en.wikipedia.org/wiki/Tf%E2%80%93idf">TF-IDF</a> in cluster) / (mean TF-IDF in rest).
         Documents are weighted by proximity to the cluster centroid so the most representative
-        papers drive the label. Keywords are repeated ×{KEYWORD_REPEAT} to outweigh free text.
-        Author names, URL tokens, and generic scientific hedging terms ("proposed", "results", etc.)
-        are excluded from the vocabulary. The top 3 terms by lift score are selected.</p>
+                papers drive the label. Keywords are repeated to outweigh free text, bit of a blunt force way to do it.
+                Author names and URL tokens are excluded. The top 3 unigrams are selected with
+                substring-based deduplication. This is not working super well, unfortunately.</p>
         <p style="margin:5px 0;"><b style="color:#e0e0e0;">Data — OpenAlex</b><br>
-        OpenAlex is a free, open scholarly graph of ~250 M works with a permissive API.
-        Unlike Web of Science or Scopus it requires no subscription and supports programmatic
-        citation-graph traversal, making it well suited for fully automated, reproducible
-        pipeline runs.<br>
+                OpenAlex has a nice free API, hence its use here.<br>
         <span style="color:#f0ad4e;">⚠ Caveats:</span> (1) Reference extraction coverage is
         estimated at ~80–85%; some citation edges are missing from the graph.
         (2) Hop-2 papers cite papers that cite OpenFF — their connection to OpenFF may be
         indirect and incidental; treat them as context rather than direct citations.</p>
         <p style="margin:5px 0;"><b style="color:#e0e0e0;">Assumptions &amp; known limitations</b>
         <ul style="margin:4px 0 4px 12px;padding:0;color:#ccc;">
-          <li><b>Edge direction:</b> arrows are not shown; edges run from the citing paper toward the cited paper.</li>
           <li><b>Citation intent:</b> all citations are counted equally — a paper mentioning OpenFF in passing receives the same hop-1 status as one that extensively uses it.</li>
-          <li><b>Recency lag:</b> <code>cited_by_count</code> (used for node size) lags by weeks to months for newly published papers.</li>
           <li><b>Duplicate works:</b> preprints and their published journal versions, or parallel Zenodo versions of the same software release, may appear as separate nodes with nearly identical embeddings.</li>
           <li><b>Zenodo version records:</b> each versioned Zenodo DOI is a distinct hop-0 node; "openff-2.1.0" and "openff-2.2.0" are separate points with near-identical titles, creating artificial density clumps in hop-0.</li>
           <li><b>Edge budget:</b> only {max_edges:,} of {md.get("n_edges_total", len(edges)):,} total citation edges are shown; low-hop edges are kept first.</li>
-          <li><b>OpenAlex coverage:</b> papers not yet indexed, or indexed without a DOI match, are absent from the graph entirely.</li>
         </ul></p>
       </div>
     </div>
@@ -1426,7 +1409,7 @@ def main():
     ap.add_argument("--no-cache",  action="store_true", help="Ignore / overwrite cached data")
     ap.add_argument("--min-cluster-size", type=int, default=10,
                     help="HDBSCAN min_cluster_size; larger = fewer coarser clusters")
-    ap.add_argument("--min-samples", type=int, default=2,
+    ap.add_argument("--min-samples", type=int, default=3,
                     help="HDBSCAN min_samples; controls noise sensitivity")
     ap.add_argument(
         "--max-edges", type=int, default=10_000,
