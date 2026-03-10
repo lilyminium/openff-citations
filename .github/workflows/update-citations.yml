@@ -31,6 +31,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Checkout openff-stats (source of truth for input CSVs)
+        uses: actions/checkout@v4
+        with:
+          repository: lilyminium/openff-stats
+          path: openff-stats
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -43,8 +49,8 @@ jobs:
       - name: Run citation pipeline
         run: |
           python pipeline.py \
-            --publications inputs/publications.csv \
-            --zenodo       inputs/zenodo.csv \
+            --publications openff-stats/inputs/publications.csv \
+            --zenodo       openff-stats/inputs/zenodo.csv \
             --email        "${{ secrets.OPENALEX_EMAIL }}" \
             --no-cache
         env:
