@@ -1368,9 +1368,9 @@ def main():
     ap.add_argument("--output",    default=str(OUTPUTS_DIR / "citations.html"))
     ap.add_argument("--email",     default="", help="Email for OpenAlex polite pool")
     ap.add_argument("--no-cache",  action="store_true", help="Ignore / overwrite cached data")
-    ap.add_argument("--min-cluster-size", type=int, default=60,
-                    help="HDBSCAN min_cluster_size; larger = fewer coarser clusters (~60 → ~10 clusters)")
-    ap.add_argument("--min-samples", type=int, default=5,
+    ap.add_argument("--min-cluster-size", type=int, default=10,
+                    help="HDBSCAN min_cluster_size; larger = fewer coarser clusters")
+    ap.add_argument("--min-samples", type=int, default=2,
                     help="HDBSCAN min_samples; controls noise sensitivity")
     ap.add_argument(
         "--max-edges", type=int, default=10_000,
