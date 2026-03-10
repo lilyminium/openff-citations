@@ -49,7 +49,7 @@ DEFAULT_ZENODO       = REPO_ROOT / "inputs" / "zenodo.csv"
 OPENALEX_BASE = "https://api.openalex.org"
 BATCH_SIZE = 50   # IDs per `cites:` batch request
 REFS_BATCH = 50   # IDs per `ids.openalex:` batch (URL length limit ~600 chars)
-CACHE_VERSION = "v3"   # bump when cache format changes
+CACHE_VERSION = "v4"   # bump when cache format changes
 
 _session = requests.Session()
 
@@ -220,7 +220,8 @@ def load_openff_sources(publications_csv: Path, zenodo_csv: Path) -> dict[str, s
 # Fields we want for every work — type added for article-type classification
 _SELECT = (
     "id,doi,title,publication_year,authorships,"
-    "abstract_inverted_index,cited_by_count,referenced_works,primary_topic,type"
+    "abstract_inverted_index,cited_by_count,referenced_works,primary_topic,type,"
+    "keywords,concepts,topics"
 )
 
 
@@ -1465,11 +1466,11 @@ def main():
     fit_mask = (df["hop"] <= 1).values
 
     # 4. Embed — all papers; always cache; force_refresh skips loading stale file
-    emb_cache = DATA_DIR / "embeddings.npy"
+    emb_cache = DATA_DIR / f"embeddings_{CACHE_VERSION}.npy"
     embs = embed(df, cache_path=emb_cache, force_refresh=args.no_cache)
 
     # 5. UMAP — fit on hop-0+1, transform hop-2 (approximate) into that layout
-    umap_cache = DATA_DIR / "umap_coords.npy"
+    umap_cache = DATA_DIR / f"umap_coords_{CACHE_VERSION}.npy"
     coords = run_umap(
         embs, fit_mask=fit_mask,
         cache_path=umap_cache, force_refresh=args.no_cache,
